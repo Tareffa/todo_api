@@ -3,8 +3,9 @@
 Uma API RESTful para gerenciar quadros Kanban com colunas e tarefas.
 
 # Candidatos a desenvolvedor BackEnd:
-> Desenvolva uma API, em Java Spring que se adeque à documentação abaixo, siga as melhores práticas do mercado.
+> Desenvolva uma API, em Java Spring, que se adeque à documentação abaixo, siga as melhores práticas do mercado.
 > Em seguida desenvolva testes unitários para todos os métodos da sua aplicação.
+* Candidatos a BackEnd deverão receber apenas o README.md para construir a aplicação do zero.
 
 # Candidatos a desenvolvedor FrontEnd:
 
@@ -52,6 +53,7 @@ Após a conexão ser reestabelecida, os dados devem ser sincronizados
 > docker build -t todo_api .
 > docker run -p 8080:8080 todo_api
 > ```
+* Candidatos a FrontEnd deverão receber o projeto (API) completo para construir as aplicações web por cima.
 
 ## 📚 Documentação de Endpoints
 
