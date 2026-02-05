@@ -2,6 +2,11 @@
 
 Uma API RESTful para gerenciar quadros Kanban com colunas e tarefas.
 
+A sua aplicação precisa permitir:
+* Exibir, criar, alterar e excluir quadros;
+* dentro dos quadros, exibir (em ordem), criar, alterar, mover (horizontalmente) e excluir colunas;
+* dentro das colunas, exibir (em ordem), criar, alterar, mover (vertical e horizontalmente) e excluir tarefas.
+
 # Candidatos a desenvolvedor BackEnd:
 > Desenvolva uma API, em Java Spring, que se adeque à documentação abaixo, siga as melhores práticas do mercado.
 > Em seguida desenvolva testes unitários para todos os métodos da sua aplicação.
@@ -10,12 +15,7 @@ Uma API RESTful para gerenciar quadros Kanban com colunas e tarefas.
 # Candidatos a desenvolvedor FrontEnd:
 
 > #### Não se preocupe com o código interno da API que você recebeu, você apenas precisa criar um frontend (preferencialmente na versão mais recente do Angular) que a consuma
-> A sua aplicação precisa permitir:
-> * Exibir, criar, alterar e excluir quadros;
-> * dentro dos quadros, exibir (em ordem), criar, alterar, mover (horizontalmente) e excluir colunas;
-> * dentro das colunas, exibir (em ordem), criar, alterar, mover (vertical e horizontalmente) e excluir tarefas.
->
-> Além disso, sua aplicação deve ser 100% funcional tanto online quanto offline. Os dados devem ser salvos localmente e, havendo conexão com a internet, na API.
+> Sua aplicação deve ser 100% funcional tanto online quanto offline. Os dados devem ser salvos localmente e, havendo conexão com a internet, na API.
 Após a conexão ser reestabelecida, os dados devem ser sincronizados
 > 
 > 
