@@ -2,51 +2,56 @@
 
 Uma API RESTful para gerenciar quadros Kanban com colunas e tarefas.
 
-#### Não se preocupe com o código interno desta API, você apenas precisa criar um frontend (preferencialmente na versão mais recente do Angular) que a consuma
+# Candidatos a desenvolvedor BackEnd:
+> Desenvolva uma API, em Java Spring que se adeque à documentação abaixo, siga as melhores práticas do mercado.
+> Em seguida desenvolva testes unitários para todos os métodos da sua aplicação.
 
-A sua aplicação precisa permitir:
-* Exibir, criar, alterar e excluir quadros;
-* dentro dos quadros, exibir (em ordem), criar, alterar, mover (horizontalmente) e excluir colunas;
-* dentro das colunas, exibir (em ordem), criar, alterar, mover (vertical e horizontalmente) e excluir tarefas.
+# Candidatos a desenvolvedor FrontEnd:
 
-Além disso, sua aplicação deve ser 100% funcional tanto online quanto offline. Os dados devem ser salvos localmente e, havendo conexão com a internet, na API.
+> #### Não se preocupe com o código interno da API que você recebeu, você apenas precisa criar um frontend (preferencialmente na versão mais recente do Angular) que a consuma
+> A sua aplicação precisa permitir:
+> * Exibir, criar, alterar e excluir quadros;
+> * dentro dos quadros, exibir (em ordem), criar, alterar, mover (horizontalmente) e excluir colunas;
+> * dentro das colunas, exibir (em ordem), criar, alterar, mover (vertical e horizontalmente) e excluir tarefas.
+>
+> Além disso, sua aplicação deve ser 100% funcional tanto online quanto offline. Os dados devem ser salvos localmente e, havendo conexão com a internet, na API.
 Após a conexão ser reestabelecida, os dados devem ser sincronizados
-
-
-
-## 🚀 Como Executar
-
-### Opção 1: Com Docker Compose (Recomendado)
-
-```bash
-docker-compose up
-```
-
-A API estará disponível em `http://localhost:8080`
-
-### Opção 2: Compilar e Rodar Localmente
-
-**Pré-requisitos:**
-- Gleam 1.14.0
-- Erlang 27 ou superior
-
-**Instalação do Gleam:**
-- Visite [gleam.run/getting-started/installing](https://gleam.run/getting-started/installing/) para instruções de instalação
-
-**Rodar o projeto:**
-
-```bash
-gleam run
-```
-
-A API estará disponível em `http://localhost:8080`
-
-### Opção 3: Build Manual com Docker
-
-```bash
-docker build -t todo_api .
-docker run -p 8080:8080 todo_api
-```
+> 
+> 
+> 
+> ## 🚀 Como Executar
+> 
+> ### Opção 1: Com Docker Compose (Recomendado)
+> 
+> ```bash
+> docker-compose up
+> ```
+> 
+> A API estará disponível em `http://> localhost:8080`
+> 
+> ### Opção 2: Compilar e Rodar Localmente
+> 
+> **Pré-requisitos:**
+> - Gleam 1.14.0
+> - Erlang 27 ou superior
+> 
+> **Instalação do Gleam:**
+> - Visite [gleam.run](https://gleam.run/getting-started/installing/) para instruções de instalação
+> 
+> **Rodar o projeto:**
+> 
+> ```bash
+> gleam run
+> ```
+> 
+> A API estará disponível em `http://> localhost:8080`
+> 
+> ### Opção 3: Build Manual com Docker
+> 
+> ```bash
+> docker build -t todo_api .
+> docker run -p 8080:8080 todo_api
+> ```
 
 ## 📚 Documentação de Endpoints
 
@@ -381,4 +386,4 @@ DELETE /api/v1/task/{task_id}
 
 
 
-# Boa sorte
+# Boa sorte e boa competência.
