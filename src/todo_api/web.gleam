@@ -1,16 +1,17 @@
-import gleam/bytes_tree
-import gleam/int
 import gleam/bit_array
-import gleam/result
-import gleam/http/request
+import gleam/bytes_tree
 import gleam/http
+import gleam/http/request
 import gleam/http/response.{type Response}
+import gleam/int
+import gleam/json
 import gleam/list
+import gleam/result
 import gleam/string
 import mist
-import gleam/json
 
-pub type MistRequest = request.Request(mist.Connection)
+pub type MistRequest =
+  request.Request(mist.Connection)
 
 pub fn default_headers(resp: Response(a)) {
   resp

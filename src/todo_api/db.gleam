@@ -1,15 +1,11 @@
 import database.{type Table}
 import gleam/erlang/atom
 import todo_api/board.{type Board}
-import todo_api/task.{type Task}
 import todo_api/column.{type Column}
+import todo_api/task.{type Task}
 
 pub type Database {
-  Database(
-    boards: Table(Board),
-    columns: Table(Column),
-    tasks: Table(Task),
-  )
+  Database(boards: Table(Board), columns: Table(Column), tasks: Table(Task))
 }
 
 pub fn get_database() -> Database {
