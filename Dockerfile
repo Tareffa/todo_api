@@ -1,7 +1,11 @@
 FROM erlang:27.1.1.0-alpine AS build
+RUN apk add --no-cache ca-certificates
 COPY --from=ghcr.io/gleam-lang/gleam:v1.14.0-erlang-alpine /bin/gleam /bin/gleam
 COPY . /app/
-RUN cd /app && gleam export erlang-shipment
+RUN cd /app && \
+  gleam export erlang-shipment || \
+  gleam export erlang-shipment || \
+  gleam export erlang-shipment
 
 FROM erlang:27.1.1.0-alpine
 RUN \
