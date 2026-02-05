@@ -28,7 +28,7 @@ Após a conexão ser reestabelecida, os dados devem ser sincronizados
 > docker-compose up
 > ```
 > 
-> A API estará disponível em `http://> localhost:8080`
+> A API estará disponível em `http://localhost:8080`
 > 
 > ### Opção 2: Compilar e Rodar Localmente
 > 
@@ -45,7 +45,7 @@ Após a conexão ser reestabelecida, os dados devem ser sincronizados
 > gleam run
 > ```
 > 
-> A API estará disponível em `http://> localhost:8080`
+> A API estará disponível em `http://localhost:8080`
 > 
 > ### Opção 3: Build Manual com Docker
 > 
