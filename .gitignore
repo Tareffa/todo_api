@@ -2,3 +2,6 @@
 *.ez
 /build
 erl_crash.dump
+tb_boards.dets
+tb_columns.dets
+tb_tasks.dets
