@@ -62,7 +62,7 @@ fn from_json(
     use due_date <- decode.field("dueDate", decode.string)
     use completed <- decode.field("completed", decode.bool)
     use tags <- decode.field("tags", decode.list(decode.string))
-    use column_id <- decode.field("columnId", decode.string)
+    use column_id <- decode.optional_field("columnId", "", decode.string)
     decode.success(Task(
       name,
       position,
@@ -84,13 +84,8 @@ pub fn get_by_column_id(table: database.Table(Task), column_id: String) {
     use transac <- database.transaction(table)
     use value <- database.select(transac)
     case value {
-      #(id, Task(name, position, created_at, due_date, completed, tags, c_id))
-        if c_id == column_id
-      ->
-        database.Continue(to_json(
-          Task(name, position, created_at, due_date, completed, tags, c_id),
-          id,
-        ))
+      #(id, task) if task.column_id == column_id ->
+        database.Continue(to_json(task, id))
       _ -> database.Skip
     }
   }
