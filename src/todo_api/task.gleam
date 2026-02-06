@@ -62,7 +62,7 @@ fn from_json(
     use due_date <- decode.field("dueDate", decode.string)
     use completed <- decode.field("completed", decode.bool)
     use tags <- decode.field("tags", decode.list(decode.string))
-    use column_id <- decode.optional_field("columnId", "", decode.string)
+    use column_id <- decode.field("columnId", decode.string)
     decode.success(Task(
       name,
       position,
@@ -93,28 +93,14 @@ pub fn get_by_column_id(table: database.Table(Task), column_id: String) {
   |> web.json
 }
 
-pub fn new(
-  req: request.Request(mist.Connection),
-  table: database.Table(Task),
-  column_id: String,
-) {
+pub fn new(req: request.Request(mist.Connection), table: database.Table(Task)) {
   use task <- from_json(req)
-  let task_with_column =
-    Task(
-      task.name,
-      task.position,
-      task.created_at,
-      task.due_date,
-      task.completed,
-      task.tags,
-      column_id,
-    )
   let assert Ok(id) = {
     use transac <- database.transaction(table)
-    let assert Ok(id) = database.insert(transac, task_with_column)
+    let assert Ok(id) = database.insert(transac, task)
     id
   }
-  to_json(task_with_column, id)
+  to_json(task, id)
   |> web.json
 }
 

@@ -32,16 +32,14 @@ pub fn handle_request(req: Request(Connection), db: Database) {
 
     ["api", "v1", "task", "from", column_id], http.Get ->
       task.get_by_column_id(db.tasks, column_id)
-    ["api", "v1", "task", "from", column_id], http.Post ->
-      task.new(req, db.tasks, column_id)
-    ["api", "v1", "task", "from", _], _ ->
-      web.method_not_allowed([http.Get, http.Post])
+    ["api", "v1", "task", "from", _], _ -> web.method_not_allowed([http.Get])
+    ["api", "v1", "task"], http.Post -> task.new(req, db.tasks)
     ["api", "v1", "task", task_id], http.Put ->
       task.update(req, db.tasks, task_id)
     ["api", "v1", "task", task_id], http.Delete ->
       task.delete(db.tasks, task_id)
     ["api", "v1", "task", _], _ ->
-      web.method_not_allowed([http.Put, http.Delete])
+      web.method_not_allowed([http.Put, http.Delete, http.Post])
 
     _, _ -> web.not_found()
   }

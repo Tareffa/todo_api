@@ -300,7 +300,7 @@ GET /api/v1/task/from/{column_id}
 
 ### Criar nova tarefa
 ```
-POST /api/v1/task/from/{column_id}
+POST /api/v1/task
 ```
 
 **Body:**
