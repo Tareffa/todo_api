@@ -53,6 +53,13 @@ pub fn bad_request() {
   |> response.set_body(body)
 }
 
+pub fn no_content() {
+  let body = mist.Bytes(bytes_tree.from_string(""))
+  response.new(204)
+  |> default_headers
+  |> response.set_body(body)
+}
+
 pub fn json(json_string: json.Json) {
   let body = mist.Bytes(bytes_tree.from_string(json.to_string(json_string)))
   response.new(200)

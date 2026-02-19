@@ -9,6 +9,8 @@ import todo_api/web
 
 pub fn handle_request(req: Request(Connection), db: Database) {
   case request.path_segments(req), req.method {
+    _, http.Options -> web.no_content()
+
     ["api", "v1", "board"], http.Get -> board.get_all(db.boards)
     ["api", "v1", "board"], http.Post -> board.new(req, db.boards)
     ["api", "v1", "board"], _ -> web.method_not_allowed([http.Get, http.Post])
