@@ -1,0 +1,186 @@
+import ../src/board
+import ../src/column
+import ../src/db
+import ../src/task
+
+func body(name: Str, position: Int, columnId: Int): Str {
+	return `\{"name":"{name}","position":{position},"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":false,"tags":["backend"],"columnId":{columnId}}`
+}
+
+func nameOf(row: task.TaskRow): Str {
+	return row.name
+}
+
+proc listed(database: hive.sql.SqlConnection, columnId: Str): task.TaskRow[dyn] {
+	if hive.sql.run(database, task.selectByColumn(columnId)) is Result.Ok(rows) {
+		return rows
+	}
+	panic "as tarefas da coluna {columnId} não foram lidas"
+}
+
+proc names(database: hive.sql.SqlConnection, columnId: Str): Str {
+	return join(map(listed(database, columnId), nameOf), ", ")
+}
+
+// O quadro 1 com as colunas 1 e 2, sem tarefas.
+proc withColumns(): hive.sql.SqlConnection {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	column.create(database, `\{"name":"A Fazer","position":0,"boardId":1}`)
+	column.create(database, `\{"name":"Fazendo","position":1,"boardId":1}`)
+	return database
+}
+
+// A coluna 1 com as tarefas A, B, C e D (ids 1 a 4), e a coluna 2 com X (id 5).
+proc withTasks(): hive.sql.SqlConnection {
+	database := withColumns()
+	task.create(database, body("A", 0, 1))
+	task.create(database, body("B", 1, 1))
+	task.create(database, body("C", 2, 1))
+	task.create(database, body("D", 3, 1))
+	task.create(database, body("X", 0, 2))
+	return database
+}
+
+test "uma tarefa vira JSON com todos os campos" {
+	Str[dyn] tags = ["backend", "segurança"]
+	encoded := encode(task.Task(1, "Implementar autenticação", 0, "2026-02-05T10:00:00Z", "2026-02-10T23:59:59Z", false, tags, 1), hive.json.codec())
+	assert encoded == `\{"id":1,"name":"Implementar autenticação","position":0,"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":false,"tags":["backend","segurança"],"columnId":1}`
+}
+
+test "criar devolve a tarefa como ficou guardada" {
+	database := withColumns()
+	created := task.create(database, `\{"name":"Implementar autenticação","position":0,"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":false,"tags":["backend","segurança"],"columnId":1}`)
+	assert created.status == 200
+	assert created.body == `\{"id":1,"name":"Implementar autenticação","position":0,"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":false,"tags":["backend","segurança"],"columnId":1}`
+	assert task.getByColumnId(database, "1").body == "[" + created.body + "]"
+}
+
+test "as tags voltam como foram enviadas" {
+	database := withColumns()
+	task.create(database, `\{"name":"Sem tags","position":0,"createdAt":"","dueDate":"","completed":false,"tags":[],"columnId":1}`)
+	task.create(database, `\{"name":"Várias","position":1,"createdAt":"","dueDate":"","completed":false,"tags":["backend","database","urgent"],"columnId":1}`)
+	rows := listed(database, "1")
+	assert len(rows) == 2
+	for each row in rows {
+		if task.fromRow(row) is Result.Ok(found) {
+			if found.name == "Sem tags" {
+				assert len(found.tags) == 0
+			} else {
+				assert join(found.tags, ",") == "backend,database,urgent"
+			}
+		} else {
+			panic "as tags de {row.name} não foram lidas"
+		}
+	}
+}
+
+test "uma linha com tags ilegíveis não vira tarefa" {
+	assert task.fromRow(task.TaskRow(1, "T", 0, "", "", false, "não é JSON", 1)) is Result.Error(_)
+}
+
+test "criar insere a tarefa na posição pedida" {
+	database := withColumns()
+	task.create(database, body("A", 0, 1))
+	task.create(database, body("C", 1, 1))
+	task.create(database, body("B", 1, 1))
+	task.create(database, body("Primeira", -5, 1))
+	task.create(database, body("Última", 99, 1))
+	assert names(database, "1") == "Primeira, A, B, C, Última"
+	assert names(database, "2") == ""
+}
+
+test "criar com um corpo inválido ou numa coluna que não existe dá 400" {
+	database := withColumns()
+	assert task.create(database, body("A", 0, 99)).status == 400
+	assert task.create(database, `\{"name":"A","position":0,"columnId":1}`).status == 400
+	assert task.create(database, `\{"name":"A","position":0,"createdAt":"","dueDate":"","completed":"não","tags":[],"columnId":1}`).status == 400
+	assert names(database, "1") == ""
+}
+
+test "alterar move a tarefa dentro da coluna" {
+	database := withTasks()
+	moved := task.update(database, body("A", 2, 1), "1")
+	assert moved.status == 200
+	assert moved.body == `\{"id":1,"name":"A","position":2,"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":false,"tags":["backend"],"columnId":1}`
+	assert names(database, "1") == "B, C, A, D"
+	task.update(database, body("D", 0, 1), "4")
+	assert names(database, "1") == "D, B, C, A"
+}
+
+test "alterar move a tarefa para outra coluna" {
+	database := withTasks()
+	moved := task.update(database, body("B", 1, 2), "2")
+	assert moved.status == 200
+	assert names(database, "1") == "A, C, D"
+	assert names(database, "2") == "X, B"
+}
+
+test "alterar marca a tarefa como concluída" {
+	database := withTasks()
+	updated := task.update(database, `\{"name":"B","position":1,"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":true,"tags":["backend"],"columnId":1}`, "2")
+	assert updated.body == `\{"id":2,"name":"B","position":1,"createdAt":"2026-02-05T10:00:00Z","dueDate":"2026-02-10T23:59:59Z","completed":true,"tags":["backend"],"columnId":1}`
+	rows := listed(database, "1")
+	if rows is [_, second, ...rest] {
+		assert second.completed == true
+	} else {
+		panic "a coluna 1 tem menos de duas tarefas"
+	}
+	assert names(database, "1") == "A, B, C, D"
+}
+
+test "alterar para uma coluna que não existe dá 400 e não move a tarefa" {
+	database := withTasks()
+	assert task.update(database, body("B", 0, 99), "2").status == 400
+	assert names(database, "1") == "A, B, C, D"
+}
+
+test "alterar uma tarefa que não existe dá 404, e um corpo inválido dá 400" {
+	database := withTasks()
+	assert task.update(database, body("Z", 0, 1), "99").status == 404
+	assert task.update(database, body("Z", 0, 1), "abc").status == 404
+	assert task.update(database, `\{"name":"Z"}`, "1").status == 400
+}
+
+test "excluir tira a tarefa da sequência" {
+	database := withTasks()
+	deleted := task.delete(database, "3")
+	assert deleted.status == 200
+	assert deleted.body == `\{"status":"ok"}`
+	assert names(database, "1") == "A, B, D"
+	task.delete(database, "1")
+	assert names(database, "1") == "B, D"
+	assert task.delete(database, "1").status == 404
+	assert names(database, "2") == "X"
+}
+
+test "criações ao mesmo tempo mantêm a sequência inteira" {
+	database := withColumns()
+	created := await [
+		task.create(database, body("A", 0, 1)),
+		task.create(database, body("B", 0, 1)),
+		task.create(database, body("C", 1, 1)),
+		task.create(database, body("D", 1, 1)),
+		task.create(database, body("E", 2, 1)),
+		task.create(database, body("F", 9, 1))
+	]
+	for each answer in created {
+		assert answer.status == 200
+	}
+	assert len(listed(database, "1")) == 6
+}
+
+test "movimentos ao mesmo tempo mantêm a sequência inteira" {
+	database := withTasks()
+	moved := await [
+		task.update(database, body("A", 3, 1), "1"),
+		task.update(database, body("B", 0, 1), "2"),
+		task.update(database, body("C", 0, 2), "3"),
+		task.update(database, body("D", 1, 1), "4"),
+		task.update(database, body("X", 0, 1), "5")
+	]
+	for each answer in moved {
+		assert answer.status == 200
+	}
+	assert len(listed(database, "1")) + len(listed(database, "2")) == 5
+}

@@ -1,0 +1,16 @@
+services:
+  todo_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+    volumes:
+      - todo_api_data:/data
+    container_name: todo_api
+    restart: unless-stopped
+
+volumes:
+  todo_api_data:

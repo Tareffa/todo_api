@@ -1,0 +1,216 @@
+import ./web
+
+type Task {
+	// Ausente no corpo das requisições: quem atribui é o AUTOINCREMENT.
+	id: Int -- Default as 0;
+	name: Str
+	position: Int
+	createdAt: Str
+	dueDate: Str
+	completed: Bool
+	tags: Str[dyn]
+	columnId: Int
+}
+
+// Uma tarefa como as consultas a devolvem, com as tags no JSON de um StoredTags.
+type TaskRow {
+	id: Int
+	name: Str
+	position: Int
+	createdAt: Str
+	dueDate: Str
+	completed: Bool
+	tags: Str
+	columnId: Int
+}
+
+type StoredTags {
+	tags: Str[dyn]
+}
+
+// Cada tarefa guarda o id da anterior na mesma coluna; previous_id NULL é a
+// primeira. `position` não é guardada: é o índice da tarefa nessa sequência.
+query createTable(): void {
+	CREATE TABLE IF NOT EXISTS tasks (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT NOT NULL,
+		created_at  TEXT NOT NULL,
+		due_date    TEXT NOT NULL,
+		completed   BOOLEAN NOT NULL,
+		tags        TEXT NOT NULL,
+		column_id   INTEGER NOT NULL REFERENCES columns (id) ON DELETE CASCADE,
+		previous_id INTEGER REFERENCES tasks (id)
+	)
+}
+
+// A tarefa que apontava para o mesmo previous_id passa a apontar para a nova.
+query createInsertTrigger(): void {
+	CREATE TRIGGER IF NOT EXISTS tasks_insert AFTER INSERT ON tasks
+	BEGIN
+		UPDATE tasks SET previous_id = NEW.id
+		WHERE column_id = NEW.column_id AND previous_id IS NEW.previous_id AND id != NEW.id;
+	END
+}
+
+// Fecha a lacuna onde a tarefa estava e abre uma onde ela entrou. Só dispara
+// em UPDATEs que mencionam column_id, e os UPDATEs dos gatilhos não mencionam.
+query createMoveTrigger(): void {
+	CREATE TRIGGER IF NOT EXISTS tasks_move AFTER UPDATE OF column_id ON tasks
+	WHEN OLD.column_id IS NOT NEW.column_id OR OLD.previous_id IS NOT NEW.previous_id
+	BEGIN
+		UPDATE tasks SET previous_id = OLD.previous_id
+		WHERE previous_id = OLD.id;
+		UPDATE tasks SET previous_id = NEW.id
+		WHERE column_id = NEW.column_id AND previous_id IS NEW.previous_id AND id != NEW.id;
+	END
+}
+
+// A tarefa que apontava para a excluída passa a apontar para a anterior dela.
+query createDeleteTrigger(): void {
+	CREATE TRIGGER IF NOT EXISTS tasks_delete AFTER DELETE ON tasks
+	BEGIN
+		UPDATE tasks SET previous_id = OLD.previous_id
+		WHERE previous_id = OLD.id;
+	END
+}
+
+query selectByColumn(columnId: Str): TaskRow[dyn] {
+	WITH RECURSIVE chain(id, name, position, createdAt, dueDate, completed, tags, columnId) AS (
+		SELECT id, name, 0, created_at, due_date, completed, tags, column_id FROM tasks
+		WHERE column_id = {columnId} AND previous_id IS NULL
+		UNION ALL
+		SELECT successor.id, successor.name, chain.position + 1, successor.created_at,
+			successor.due_date, successor.completed, successor.tags, successor.column_id
+		FROM tasks AS successor JOIN chain ON successor.previous_id = chain.id
+	)
+	SELECT id, name, position, createdAt, dueDate, completed, tags, columnId
+	FROM chain ORDER BY position
+}
+
+query selectTask(id: Int): TaskRow[dyn] {
+	WITH RECURSIVE chain(id, name, position, createdAt, dueDate, completed, tags, columnId) AS (
+		SELECT id, name, 0, created_at, due_date, completed, tags, column_id FROM tasks
+		WHERE column_id = (SELECT column_id FROM tasks WHERE id = {id}) AND previous_id IS NULL
+		UNION ALL
+		SELECT successor.id, successor.name, chain.position + 1, successor.created_at,
+			successor.due_date, successor.completed, successor.tags, successor.column_id
+		FROM tasks AS successor JOIN chain ON successor.previous_id = chain.id
+	)
+	SELECT id, name, position, createdAt, dueDate, completed, tags, columnId
+	FROM chain WHERE id = {id}
+}
+
+// previous_id é a tarefa na posição `position - 1` da coluna, ou a última se
+// a coluna tiver menos tarefas; nenhuma (NULL) se `position` for 0 ou menos.
+query insertTask(name: Str, position: Int, createdAt: Str, dueDate: Str, completed: Bool, tags: Str, columnId: Int): Int[dyn] {
+	INSERT INTO tasks (name, created_at, due_date, completed, tags, column_id, previous_id)
+	VALUES ({name}, {createdAt}, {dueDate}, {completed}, {tags}, {columnId}, (
+		WITH RECURSIVE chain(id, position) AS (
+			SELECT id, 0 FROM tasks
+			WHERE column_id = {columnId} AND previous_id IS NULL
+			UNION ALL
+			SELECT successor.id, chain.position + 1
+			FROM tasks AS successor JOIN chain ON successor.previous_id = chain.id
+		)
+		SELECT id FROM chain WHERE position < {position} ORDER BY position DESC LIMIT 1
+	))
+	RETURNING id
+}
+
+// Como em insertTask, contando as posições sem a própria tarefa.
+query updateTask(id: Str, name: Str, position: Int, createdAt: Str, dueDate: Str, completed: Bool, tags: Str, columnId: Int): Int[dyn] {
+	UPDATE tasks
+	SET name = {name}, created_at = {createdAt}, due_date = {dueDate}, completed = {completed},
+		tags = {tags}, column_id = {columnId}, previous_id = (
+		WITH RECURSIVE chain(id, position) AS (
+			SELECT id, 0 FROM tasks
+			WHERE column_id = {columnId} AND previous_id IS NULL
+			UNION ALL
+			SELECT successor.id, chain.position + 1
+			FROM tasks AS successor JOIN chain ON successor.previous_id = chain.id
+		)
+		SELECT id FROM (
+			SELECT id, position FROM chain WHERE id != {id}
+			ORDER BY position LIMIT max({position}, 0)
+		)
+		ORDER BY position DESC LIMIT 1
+	)
+	WHERE id = {id}
+	RETURNING id
+}
+
+query deleteTask(id: Str): void {
+	DELETE FROM tasks WHERE id = {id}
+}
+
+func fromRow(row: TaskRow): Result<Task, hive.json.JsonError> {
+	stored := StoredTags.decode(row.tags, hive.json.codec())
+	if stored is Result.Ok(kept) {
+		return Result.Ok(Task(row.id, row.name, row.position, row.createdAt, row.dueDate, row.completed, kept.tags, row.columnId))
+	} else if stored is Result.Error(why) {
+		return Result.Error(why)
+	}
+}
+
+func storedTags(task: Task): Str {
+	return encode(StoredTags(task.tags), hive.json.codec())
+}
+
+proc getByColumnId(db: hive.sql.SqlConnection, columnId: Str): hive.net.HttpResponse {
+	if hive.sql.run(db, selectByColumn(columnId)) is Result.Ok(rows) {
+		return web.json(encode(filterMap(rows, fromRow), hive.json.codec()))
+	}
+	return web.serverError()
+}
+
+proc getStored(db: hive.sql.SqlConnection, id: Int): hive.net.HttpResponse {
+	found := hive.sql.run(db, selectTask(id))
+	if found is Result.Ok([row]) && fromRow(row) is Result.Ok(task) {
+		return web.json(encode(task, hive.json.codec()))
+	}
+	if found is Result.Ok([]) {
+		return web.notFound()
+	}
+	return web.serverError()
+}
+
+proc create(db: hive.sql.SqlConnection, body: Str): hive.net.HttpResponse {
+	if Task.decode(body, hive.json.codec()) is Result.Ok(input) {
+		inserted := hive.sql.run(db, insertTask(input.name, input.position, input.createdAt, input.dueDate, input.completed, storedTags(input), input.columnId))
+		if inserted is Result.Ok([id]) {
+			return getStored(db, id)
+		}
+		if inserted is Result.Error(why) {
+			return web.fromSqlError(why)
+		}
+		return web.serverError()
+	}
+	return web.badRequest()
+}
+
+proc update(db: hive.sql.SqlConnection, body: Str, id: Str): hive.net.HttpResponse {
+	if Task.decode(body, hive.json.codec()) is Result.Ok(input) {
+		updated := hive.sql.run(db, updateTask(id, input.name, input.position, input.createdAt, input.dueDate, input.completed, storedTags(input), input.columnId))
+		if updated is Result.Ok([taskId]) {
+			return getStored(db, taskId)
+		}
+		if updated is Result.Ok([]) {
+			return web.notFound()
+		}
+		if updated is Result.Error(why) {
+			return web.fromSqlError(why)
+		}
+		return web.serverError()
+	}
+	return web.badRequest()
+}
+
+proc delete(db: hive.sql.SqlConnection, id: Str): hive.net.HttpResponse {
+	if hive.sql.run(db, deleteTask(id)) is Result.Ok(touched) {
+		if touched == 0 {
+			return web.notFound()
+		}
+		return web.ok()
+	}
+	return web.serverError()
+}

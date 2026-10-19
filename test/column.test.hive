@@ -1,0 +1,178 @@
+import ../src/board
+import ../src/column
+import ../src/db
+import ../src/task
+
+func body(name: Str, position: Int, boardId: Int): Str {
+	return `\{"name":"{name}","position":{position},"boardId":{boardId}}`
+}
+
+func nameOf(found: column.Column): Str {
+	return found.name
+}
+
+proc listed(database: hive.sql.SqlConnection, boardId: Str): column.Column[dyn] {
+	if hive.sql.run(database, column.selectByBoard(boardId)) is Result.Ok(columns) {
+		return columns
+	}
+	panic "as colunas do quadro {boardId} não foram lidas"
+}
+
+proc names(database: hive.sql.SqlConnection, boardId: Str): Str {
+	return join(map(listed(database, boardId), nameOf), ", ")
+}
+
+// Os quadros 1 e 2, sem colunas.
+proc withBoards(): hive.sql.SqlConnection {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	board.create(database, `\{"name":"Projeto B"}`)
+	return database
+}
+
+// O quadro 1 com as colunas A, B, C e D (ids 1 a 4), e o quadro 2 com X (id 5).
+proc withColumns(): hive.sql.SqlConnection {
+	database := withBoards()
+	column.create(database, body("A", 0, 1))
+	column.create(database, body("B", 1, 1))
+	column.create(database, body("C", 2, 1))
+	column.create(database, body("D", 3, 1))
+	column.create(database, body("X", 0, 2))
+	return database
+}
+
+test "uma coluna vira JSON com id, name, position e boardId" {
+	assert encode(column.Column(1, "A Fazer", 0, 1), hive.json.codec()) == `\{"id":1,"name":"A Fazer","position":0,"boardId":1}`
+}
+
+test "criar devolve a coluna com o id e a posição que ela ocupa" {
+	database := withBoards()
+	first := column.create(database, body("A Fazer", 0, 1))
+	assert first.status == 200
+	assert first.body == `\{"id":1,"name":"A Fazer","position":0,"boardId":1}`
+	assert column.create(database, body("Feito", 9, 1)).body == `\{"id":2,"name":"Feito","position":1,"boardId":1}`
+}
+
+test "criar insere a coluna na posição pedida" {
+	database := withBoards()
+	column.create(database, body("A Fazer", 0, 1))
+	column.create(database, body("Feito", 1, 1))
+	column.create(database, body("Fazendo", 1, 1))
+	column.create(database, body("Backlog", 0, 1))
+	column.create(database, body("Arquivo", 99, 1))
+	column.create(database, body("Ideias", -1, 1))
+	assert names(database, "1") == "Ideias, Backlog, A Fazer, Fazendo, Feito, Arquivo"
+}
+
+test "listar devolve só as colunas do quadro, em ordem" {
+	database := withBoards()
+	column.create(database, body("A Fazer", 0, 1))
+	column.create(database, body("Outra", 0, 2))
+	column.create(database, body("Backlog", 0, 1))
+	listedColumns := column.getByBoardId(database, "1")
+	assert listedColumns.status == 200
+	assert listedColumns.body == `[\{"id":3,"name":"Backlog","position":0,"boardId":1},\{"id":1,"name":"A Fazer","position":1,"boardId":1}]`
+	assert column.getByBoardId(database, "3").body == "[]"
+	assert column.getByBoardId(database, "abc").body == "[]"
+}
+
+test "criar com um corpo inválido ou num quadro que não existe dá 400" {
+	database := withBoards()
+	assert column.create(database, body("A Fazer", 0, 99)).status == 400
+	assert column.create(database, `\{"name":"A Fazer","position":0}`).status == 400
+	assert column.create(database, `\{"name":"A Fazer","position":"0","boardId":1}`).status == 400
+	assert names(database, "1") == ""
+}
+
+test "alterar move a coluna para frente e para trás no quadro" {
+	database := withColumns()
+	moved := column.update(database, body("B", 2, 1), "2")
+	assert moved.status == 200
+	assert moved.body == `\{"id":2,"name":"B","position":2,"boardId":1}`
+	assert names(database, "1") == "A, C, B, D"
+	column.update(database, body("D", 0, 1), "4")
+	assert names(database, "1") == "D, A, C, B"
+	column.update(database, body("D", 99, 1), "4")
+	assert names(database, "1") == "A, C, B, D"
+	column.update(database, body("A", 1, 1), "1")
+	assert names(database, "1") == "C, A, B, D"
+}
+
+test "alterar sem mudar a posição só troca o nome" {
+	database := withColumns()
+	renamed := column.update(database, body("Bê", 1, 1), "2")
+	assert renamed.body == `\{"id":2,"name":"Bê","position":1,"boardId":1}`
+	assert names(database, "1") == "A, Bê, C, D"
+}
+
+test "alterar move a coluna para outro quadro" {
+	database := withColumns()
+	moved := column.update(database, body("B", 0, 2), "2")
+	assert moved.body == `\{"id":2,"name":"B","position":0,"boardId":2}`
+	assert names(database, "1") == "A, C, D"
+	assert names(database, "2") == "B, X"
+}
+
+test "alterar para um quadro que não existe dá 400 e não move a coluna" {
+	database := withColumns()
+	assert column.update(database, body("B", 0, 99), "2").status == 400
+	assert names(database, "1") == "A, B, C, D"
+}
+
+test "alterar uma coluna que não existe dá 404, e um corpo inválido dá 400" {
+	database := withColumns()
+	assert column.update(database, body("Z", 0, 1), "99").status == 404
+	assert column.update(database, body("Z", 0, 1), "abc").status == 404
+	assert column.update(database, `\{"name":"Z"}`, "1").status == 400
+}
+
+test "excluir tira a coluna da sequência" {
+	database := withColumns()
+	deleted := column.delete(database, "2")
+	assert deleted.status == 200
+	assert deleted.body == `\{"status":"ok"}`
+	assert names(database, "1") == "A, C, D"
+	column.delete(database, "1")
+	assert names(database, "1") == "C, D"
+	column.delete(database, "4")
+	assert names(database, "1") == "C"
+	assert column.delete(database, "4").status == 404
+}
+
+test "excluir uma coluna exclui as tarefas dela" {
+	database := withColumns()
+	task.create(database, `\{"name":"T","position":0,"createdAt":"","dueDate":"","completed":false,"tags":[],"columnId":1}`)
+	column.delete(database, "1")
+	assert task.getByColumnId(database, "1").body == "[]"
+}
+
+test "criações ao mesmo tempo mantêm a sequência inteira" {
+	database := withBoards()
+	created := await [
+		column.create(database, body("A", 0, 1)),
+		column.create(database, body("B", 0, 1)),
+		column.create(database, body("C", 1, 1)),
+		column.create(database, body("D", 1, 1)),
+		column.create(database, body("E", 2, 1)),
+		column.create(database, body("F", 9, 1))
+	]
+	for each answer in created {
+		assert answer.status == 200
+	}
+	assert len(listed(database, "1")) == 6
+}
+
+test "movimentos ao mesmo tempo mantêm a sequência inteira" {
+	database := withColumns()
+	moved := await [
+		column.update(database, body("A", 3, 1), "1"),
+		column.update(database, body("B", 0, 1), "2"),
+		column.update(database, body("C", 0, 2), "3"),
+		column.update(database, body("D", 1, 1), "4"),
+		column.update(database, body("X", 0, 1), "5")
+	]
+	for each answer in moved {
+		assert answer.status == 200
+	}
+	assert len(listed(database, "1")) + len(listed(database, "2")) == 5
+}

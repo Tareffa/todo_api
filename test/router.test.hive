@@ -1,0 +1,97 @@
+import ../src/db
+import ../src/router
+import ../src/web
+
+proc send(database: hive.sql.SqlConnection, method: Str, url: Str, body: Str): hive.net.HttpResponse {
+	return router.handleRequest(database, hive.net.HttpRequest(method, url, [], body))
+}
+
+func header(answer: hive.net.HttpResponse, name: Str): Str {
+	if row(answer.headers, name) is [_, value] {
+		return value
+	}
+	return ""
+}
+
+test "OPTIONS responde 204 com os cabeçalhos CORS em qualquer caminho" {
+	database := db.open(":memory:")
+	answer := send(database, "OPTIONS", "/qualquer/coisa", "")
+	assert answer.status == 204
+	assert answer.body == ""
+	assert header(answer, "Access-Control-Allow-Origin") == "*"
+	assert header(answer, "Access-Control-Allow-Headers") == "*"
+	assert header(answer, "Access-Control-Allow-Methods") == "GET,HEAD,PUT,PATCH,DELETE"
+}
+
+test "as respostas levam Content-Type e os cabeçalhos CORS" {
+	database := db.open(":memory:")
+	listed := send(database, "GET", "/api/v1/board", "")
+	assert header(listed, "Content-Type") == "application/json"
+	assert header(listed, "Access-Control-Allow-Origin") == "*"
+	missing := send(database, "GET", "/nada", "")
+	assert header(missing, "Content-Type") == "text/plain"
+	assert header(missing, "Access-Control-Allow-Origin") == "*"
+}
+
+test "um caminho desconhecido dá 404" {
+	database := db.open(":memory:")
+	assert send(database, "GET", "/", "").status == 404
+	assert send(database, "GET", "/api/v1", "").status == 404
+	assert send(database, "GET", "/api/v1/column", "").status == 404
+	assert send(database, "GET", "/api/v1/task", "").status == 404
+	assert send(database, "GET", "/api/v2/board", "").status == 404
+}
+
+test "um método que a rota não aceita dá 405 dizendo quais aceita" {
+	database := db.open(":memory:")
+	board := send(database, "PATCH", "/api/v1/board", "")
+	assert board.status == 405
+	assert board.body == "Method not allowed"
+	assert header(board, "Allow") == "GET,POST"
+	assert header(board, "Access-Control-Allow-Methods") == "GET,POST"
+	assert header(send(database, "POST", "/api/v1/board/1", ""), "Allow") == "PUT,DELETE"
+	assert header(send(database, "POST", "/api/v1/column/from/1", ""), "Allow") == "GET"
+	assert header(send(database, "GET", "/api/v1/column/1", ""), "Allow") == "PUT,DELETE"
+	assert header(send(database, "PUT", "/api/v1/task/from/1", ""), "Allow") == "GET"
+	assert header(send(database, "POST", "/api/v1/task/1", ""), "Allow") == "PUT,DELETE"
+}
+
+test "a query string é ignorada" {
+	database := db.open(":memory:")
+	answer := send(database, "GET", "/api/v1/board?_=123", "")
+	assert answer.status == 200
+	assert answer.body == "[]"
+}
+
+test "cada rota chega ao seu handler" {
+	database := db.open(":memory:")
+	assert send(database, "POST", "/api/v1/board", `\{"name":"Projeto A"}`).body == `\{"id":1,"name":"Projeto A"}`
+	assert send(database, "PUT", "/api/v1/board/1", `\{"name":"Projeto B"}`).body == `\{"id":1,"name":"Projeto B"}`
+	assert send(database, "GET", "/api/v1/board", "").body == `[\{"id":1,"name":"Projeto B"}]`
+
+	assert send(database, "POST", "/api/v1/column", `\{"name":"A Fazer","position":0,"boardId":1}`).body == `\{"id":1,"name":"A Fazer","position":0,"boardId":1}`
+	assert send(database, "PUT", "/api/v1/column/1", `\{"name":"Fazendo","position":0,"boardId":1}`).body == `\{"id":1,"name":"Fazendo","position":0,"boardId":1}`
+	assert send(database, "GET", "/api/v1/column/from/1", "").body == `[\{"id":1,"name":"Fazendo","position":0,"boardId":1}]`
+
+	created := send(database, "POST", "/api/v1/task", `\{"name":"T","position":0,"createdAt":"","dueDate":"","completed":false,"tags":[],"columnId":1}`)
+	assert created.body == `\{"id":1,"name":"T","position":0,"createdAt":"","dueDate":"","completed":false,"tags":[],"columnId":1}`
+	updated := send(database, "PUT", "/api/v1/task/1", `\{"name":"T","position":0,"createdAt":"","dueDate":"","completed":true,"tags":[],"columnId":1}`)
+	assert updated.body == `\{"id":1,"name":"T","position":0,"createdAt":"","dueDate":"","completed":true,"tags":[],"columnId":1}`
+	assert send(database, "GET", "/api/v1/task/from/1", "").body == "[" + updated.body + "]"
+
+	assert send(database, "DELETE", "/api/v1/task/1", "").body == `\{"status":"ok"}`
+	assert send(database, "DELETE", "/api/v1/column/1", "").body == `\{"status":"ok"}`
+	assert send(database, "DELETE", "/api/v1/board/1", "").body == `\{"status":"ok"}`
+	assert send(database, "GET", "/api/v1/board", "").body == "[]"
+}
+
+test "withoutQuery tira tudo a partir do primeiro ?" {
+	assert router.withoutQuery("/api/v1/board") == "/api/v1/board"
+	assert router.withoutQuery("/api/v1/board?a=1") == "/api/v1/board"
+	assert router.withoutQuery("/api/v1/board?a=1?b=2") == "/api/v1/board"
+}
+
+test "um erro do banco que não é de FOREIGN KEY dá 500" {
+	assert web.fromSqlError(hive.sql.SqlError("Query", "no such table: boards")).status == 500
+	assert web.fromSqlError(hive.sql.SqlError("Query", "FOREIGN KEY constraint failed")).status == 400
+}

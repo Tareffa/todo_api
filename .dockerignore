@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+.hivedocs
+.env
+**/*.hive-build
+**/*.db
+**/*.db-*
+todo_api
+todo_api.exe

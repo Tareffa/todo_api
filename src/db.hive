@@ -1,0 +1,30 @@
+import ./board
+import ./column
+import ./task
+
+// Abre o banco SQLite em `path`, criando as tabelas e os gatilhos que ainda
+// não existem.
+proc open(path: Str): hive.sql.SqlConnection {
+	opened := hive.sql.pool(hive.sql.DatabaseDriver.SQLite(), "file:{path}?_pragma=foreign_keys(1)", 1, 1)
+	if opened is Result.Ok(db) {
+		schema := [
+			board.createTable(),
+			column.createTable(),
+			column.createInsertTrigger(),
+			column.createMoveTrigger(),
+			column.createDeleteTrigger(),
+			task.createTable(),
+			task.createInsertTrigger(),
+			task.createMoveTrigger(),
+			task.createDeleteTrigger()
+		]
+		for each statement in schema {
+			if hive.sql.run(db, statement) is Result.Error(why) {
+				panic "Cannot create the schema in {path}: {why.message}"
+			}
+		}
+		return db
+	} else if opened is Result.Error(why) {
+		panic "Cannot open the database at {path}: {why.message}"
+	}
+}

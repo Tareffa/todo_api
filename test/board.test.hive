@@ -1,0 +1,88 @@
+import ../src/board
+import ../src/column
+import ../src/db
+import ../src/task
+
+test "um quadro vira JSON com id e name" {
+	assert encode(board.Board(1, "Projeto A"), hive.json.codec()) == `\{"id":1,"name":"Projeto A"}`
+}
+
+test "o corpo de um quadro não precisa de id" {
+	if board.Board.decode(`\{"name":"Projeto A"}`, hive.json.codec()) is Result.Ok(decoded) {
+		assert decoded == board.Board(0, "Projeto A")
+	} else {
+		panic "o corpo não foi lido"
+	}
+}
+
+test "criar devolve o quadro com o id do AUTOINCREMENT" {
+	database := db.open(":memory:")
+	first := board.create(database, `\{"name":"Projeto A"}`)
+	second := board.create(database, `\{"name":"Projeto B"}`)
+	assert first.status == 200
+	assert first.body == `\{"id":1,"name":"Projeto A"}`
+	assert second.body == `\{"id":2,"name":"Projeto B"}`
+}
+
+test "um corpo inválido não cria quadro" {
+	database := db.open(":memory:")
+	assert board.create(database, `\{"nome":"Projeto A"}`).status == 400
+	assert board.create(database, `\{"name":1}`).status == 400
+	assert board.create(database, "").status == 400
+	assert board.getAll(database).body == "[]"
+}
+
+test "listar devolve os quadros na ordem em que foram criados" {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	board.create(database, `\{"name":"Projeto B"}`)
+	listed := board.getAll(database)
+	assert listed.status == 200
+	assert listed.body == `[\{"id":1,"name":"Projeto A"},\{"id":2,"name":"Projeto B"}]`
+}
+
+test "alterar troca o nome do quadro" {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	updated := board.update(database, `\{"name":"Projeto A Atualizado"}`, "1")
+	assert updated.status == 200
+	assert updated.body == `\{"id":1,"name":"Projeto A Atualizado"}`
+	assert board.getAll(database).body == `[\{"id":1,"name":"Projeto A Atualizado"}]`
+}
+
+test "alterar um quadro que não existe dá 404" {
+	database := db.open(":memory:")
+	assert board.update(database, `\{"name":"Projeto A"}`, "1").status == 404
+	assert board.update(database, `\{"name":"Projeto A"}`, "abc").status == 404
+}
+
+test "alterar com um corpo inválido dá 400" {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	assert board.update(database, `\{"nome":"Projeto B"}`, "1").status == 400
+	assert board.getAll(database).body == `[\{"id":1,"name":"Projeto A"}]`
+}
+
+test "excluir remove o quadro" {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	deleted := board.delete(database, "1")
+	assert deleted.status == 200
+	assert deleted.body == `\{"status":"ok"}`
+	assert board.getAll(database).body == "[]"
+	assert board.delete(database, "1").status == 404
+	assert board.delete(database, "abc").status == 404
+}
+
+test "excluir um quadro exclui as colunas e as tarefas dele" {
+	database := db.open(":memory:")
+	board.create(database, `\{"name":"Projeto A"}`)
+	board.create(database, `\{"name":"Projeto B"}`)
+	column.create(database, `\{"name":"A Fazer","position":0,"boardId":1}`)
+	column.create(database, `\{"name":"Outra","position":0,"boardId":2}`)
+	task.create(database, `\{"name":"T","position":0,"createdAt":"","dueDate":"","completed":false,"tags":[],"columnId":1}`)
+	board.delete(database, "1")
+	assert column.getByBoardId(database, "1").body == "[]"
+	assert task.getByColumnId(database, "1").body == "[]"
+	assert column.getByBoardId(database, "2").body == `[\{"id":2,"name":"Outra","position":0,"boardId":2}]`
+}

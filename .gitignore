@@ -1,0 +1,6 @@
+*.hive-build/
+*.db
+*.db-*
+/todo_api
+/todo_api.exe
+.hivedocs/

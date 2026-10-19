@@ -1,0 +1,26 @@
+import ./src/db
+import ./src/router
+
+proc main(): void {
+	echo "Starting server..."
+
+	port := getPort()
+	database := db.open(getDatabasePath())
+
+	echo "Server started at port {port}"
+	hive.net.httpServe(port, router.handleRequest(database, _))
+}
+
+func getPort(): Int {
+	if hive.env.get("PORT") is Result.Ok(text) && hive.conv.sti(text) is Result.Ok(port) {
+		return port
+	}
+	return 8080
+}
+
+func getDatabasePath(): Str {
+	if hive.env.get("DATABASE_PATH") is Result.Ok(path) && path != "" {
+		return path
+	}
+	return "todo_api.db"
+}

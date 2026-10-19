@@ -1,0 +1,25 @@
+name: test
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+      - name: Install hivec
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/R0DR160HM/hive-lang/releases/download/v0.2.15/hivec-linux-amd64" -o "$HOME/.local/bin/hivec"
+          chmod +x "$HOME/.local/bin/hivec"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: hivec check todo_api.hive
+      - run: hivec test .

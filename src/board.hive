@@ -1,0 +1,71 @@
+import ./web
+
+type Board {
+	// Ausente no corpo das requisições: quem atribui é o AUTOINCREMENT.
+	id: Int -- Default as 0;
+	name: Str
+}
+
+query createTable(): void {
+	CREATE TABLE IF NOT EXISTS boards (
+		id   INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL
+	)
+}
+
+query selectAll(): Board[dyn] {
+	SELECT id, name FROM boards ORDER BY id
+}
+
+query insertBoard(name: Str): Int[dyn] {
+	INSERT INTO boards (name) VALUES ({name}) RETURNING id
+}
+
+query updateBoard(id: Str, name: Str): Int[dyn] {
+	UPDATE boards SET name = {name} WHERE id = {id} RETURNING id
+}
+
+query deleteBoard(id: Str): void {
+	DELETE FROM boards WHERE id = {id}
+}
+
+proc getAll(db: hive.sql.SqlConnection): hive.net.HttpResponse {
+	if hive.sql.run(db, selectAll()) is Result.Ok(boards) {
+		return web.json(encode(boards, hive.json.codec()))
+	}
+	return web.serverError()
+}
+
+proc create(db: hive.sql.SqlConnection, body: Str): hive.net.HttpResponse {
+	if Board.decode(body, hive.json.codec()) is Result.Ok(input) {
+		if hive.sql.run(db, insertBoard(input.name)) is Result.Ok([id]) {
+			return web.json(encode(Board(id, input.name), hive.json.codec()))
+		}
+		return web.serverError()
+	}
+	return web.badRequest()
+}
+
+proc update(db: hive.sql.SqlConnection, body: Str, id: Str): hive.net.HttpResponse {
+	if Board.decode(body, hive.json.codec()) is Result.Ok(input) {
+		updated := hive.sql.run(db, updateBoard(id, input.name))
+		if updated is Result.Ok([boardId]) {
+			return web.json(encode(Board(boardId, input.name), hive.json.codec()))
+		}
+		if updated is Result.Ok([]) {
+			return web.notFound()
+		}
+		return web.serverError()
+	}
+	return web.badRequest()
+}
+
+proc delete(db: hive.sql.SqlConnection, id: Str): hive.net.HttpResponse {
+	if hive.sql.run(db, deleteBoard(id)) is Result.Ok(touched) {
+		if touched == 0 {
+			return web.notFound()
+		}
+		return web.ok()
+	}
+	return web.serverError()
+}

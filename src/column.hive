@@ -1,0 +1,174 @@
+import ./web
+
+type Column {
+	// Ausente no corpo das requisições: quem atribui é o AUTOINCREMENT.
+	id: Int -- Default as 0;
+	name: Str
+	position: Int
+	boardId: Int
+}
+
+// Cada coluna guarda o id da anterior no mesmo quadro; previous_id NULL é a
+// primeira. `position` não é guardada: é o índice da coluna nessa sequência.
+query createTable(): void {
+	CREATE TABLE IF NOT EXISTS columns (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT NOT NULL,
+		board_id    INTEGER NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+		previous_id INTEGER REFERENCES columns (id)
+	)
+}
+
+// A coluna que apontava para o mesmo previous_id passa a apontar para a nova.
+query createInsertTrigger(): void {
+	CREATE TRIGGER IF NOT EXISTS columns_insert AFTER INSERT ON columns
+	BEGIN
+		UPDATE columns SET previous_id = NEW.id
+		WHERE board_id = NEW.board_id AND previous_id IS NEW.previous_id AND id != NEW.id;
+	END
+}
+
+// Fecha a lacuna onde a coluna estava e abre uma onde ela entrou. Só dispara
+// em UPDATEs que mencionam board_id, e os UPDATEs dos gatilhos não mencionam.
+query createMoveTrigger(): void {
+	CREATE TRIGGER IF NOT EXISTS columns_move AFTER UPDATE OF board_id ON columns
+	WHEN OLD.board_id IS NOT NEW.board_id OR OLD.previous_id IS NOT NEW.previous_id
+	BEGIN
+		UPDATE columns SET previous_id = OLD.previous_id
+		WHERE previous_id = OLD.id;
+		UPDATE columns SET previous_id = NEW.id
+		WHERE board_id = NEW.board_id AND previous_id IS NEW.previous_id AND id != NEW.id;
+	END
+}
+
+// A coluna que apontava para a excluída passa a apontar para a anterior dela.
+query createDeleteTrigger(): void {
+	CREATE TRIGGER IF NOT EXISTS columns_delete AFTER DELETE ON columns
+	BEGIN
+		UPDATE columns SET previous_id = OLD.previous_id
+		WHERE previous_id = OLD.id;
+	END
+}
+
+query selectByBoard(boardId: Str): Column[dyn] {
+	WITH RECURSIVE chain(id, name, position, boardId) AS (
+		SELECT id, name, 0, board_id FROM columns
+		WHERE board_id = {boardId} AND previous_id IS NULL
+		UNION ALL
+		SELECT successor.id, successor.name, chain.position + 1, successor.board_id
+		FROM columns AS successor JOIN chain ON successor.previous_id = chain.id
+	)
+	SELECT id, name, position, boardId FROM chain ORDER BY position
+}
+
+query selectColumn(id: Int): Column[dyn] {
+	WITH RECURSIVE chain(id, name, position, boardId) AS (
+		SELECT id, name, 0, board_id FROM columns
+		WHERE board_id = (SELECT board_id FROM columns WHERE id = {id}) AND previous_id IS NULL
+		UNION ALL
+		SELECT successor.id, successor.name, chain.position + 1, successor.board_id
+		FROM columns AS successor JOIN chain ON successor.previous_id = chain.id
+	)
+	SELECT id, name, position, boardId FROM chain WHERE id = {id}
+}
+
+// previous_id é a coluna na posição `position - 1` do quadro, ou a última se
+// o quadro tiver menos colunas; nenhuma (NULL) se `position` for 0 ou menos.
+query insertColumn(name: Str, position: Int, boardId: Int): Int[dyn] {
+	INSERT INTO columns (name, board_id, previous_id)
+	VALUES ({name}, {boardId}, (
+		WITH RECURSIVE chain(id, position) AS (
+			SELECT id, 0 FROM columns
+			WHERE board_id = {boardId} AND previous_id IS NULL
+			UNION ALL
+			SELECT successor.id, chain.position + 1
+			FROM columns AS successor JOIN chain ON successor.previous_id = chain.id
+		)
+		SELECT id FROM chain WHERE position < {position} ORDER BY position DESC LIMIT 1
+	))
+	RETURNING id
+}
+
+// Como em insertColumn, contando as posições sem a própria coluna.
+query updateColumn(id: Str, name: Str, position: Int, boardId: Int): Int[dyn] {
+	UPDATE columns
+	SET name = {name}, board_id = {boardId}, previous_id = (
+		WITH RECURSIVE chain(id, position) AS (
+			SELECT id, 0 FROM columns
+			WHERE board_id = {boardId} AND previous_id IS NULL
+			UNION ALL
+			SELECT successor.id, chain.position + 1
+			FROM columns AS successor JOIN chain ON successor.previous_id = chain.id
+		)
+		SELECT id FROM (
+			SELECT id, position FROM chain WHERE id != {id}
+			ORDER BY position LIMIT max({position}, 0)
+		)
+		ORDER BY position DESC LIMIT 1
+	)
+	WHERE id = {id}
+	RETURNING id
+}
+
+query deleteColumn(id: Str): void {
+	DELETE FROM columns WHERE id = {id}
+}
+
+proc getByBoardId(db: hive.sql.SqlConnection, boardId: Str): hive.net.HttpResponse {
+	if hive.sql.run(db, selectByBoard(boardId)) is Result.Ok(columns) {
+		return web.json(encode(columns, hive.json.codec()))
+	}
+	return web.serverError()
+}
+
+proc getStored(db: hive.sql.SqlConnection, id: Int): hive.net.HttpResponse {
+	found := hive.sql.run(db, selectColumn(id))
+	if found is Result.Ok([column]) {
+		return web.json(encode(column, hive.json.codec()))
+	}
+	if found is Result.Ok([]) {
+		return web.notFound()
+	}
+	return web.serverError()
+}
+
+proc create(db: hive.sql.SqlConnection, body: Str): hive.net.HttpResponse {
+	if Column.decode(body, hive.json.codec()) is Result.Ok(input) {
+		inserted := hive.sql.run(db, insertColumn(input.name, input.position, input.boardId))
+		if inserted is Result.Ok([id]) {
+			return getStored(db, id)
+		}
+		if inserted is Result.Error(why) {
+			return web.fromSqlError(why)
+		}
+		return web.serverError()
+	}
+	return web.badRequest()
+}
+
+proc update(db: hive.sql.SqlConnection, body: Str, id: Str): hive.net.HttpResponse {
+	if Column.decode(body, hive.json.codec()) is Result.Ok(input) {
+		updated := hive.sql.run(db, updateColumn(id, input.name, input.position, input.boardId))
+		if updated is Result.Ok([columnId]) {
+			return getStored(db, columnId)
+		}
+		if updated is Result.Ok([]) {
+			return web.notFound()
+		}
+		if updated is Result.Error(why) {
+			return web.fromSqlError(why)
+		}
+		return web.serverError()
+	}
+	return web.badRequest()
+}
+
+proc delete(db: hive.sql.SqlConnection, id: Str): hive.net.HttpResponse {
+	if hive.sql.run(db, deleteColumn(id)) is Result.Ok(touched) {
+		if touched == 0 {
+			return web.notFound()
+		}
+		return web.ok()
+	}
+	return web.serverError()
+}

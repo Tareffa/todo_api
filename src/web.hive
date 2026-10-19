@@ -1,0 +1,64 @@
+type Status {
+	status: Str
+}
+
+func defaultHeaders(): Table {
+	return [
+		["Access-Control-Allow-Headers", "*"],
+		["Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,DELETE"],
+		["Access-Control-Allow-Origin", "*"]
+	]
+}
+
+func withContentType(contentType: Str): Table {
+	mut Table headers = defaultHeaders()
+	prepend(headers, ["Content-Type", contentType])
+	return headers
+}
+
+func text(status: Int, body: Str): hive.net.HttpResponse {
+	return hive.net.HttpResponse(status, withContentType("text/plain"), body)
+}
+
+func json(body: Str): hive.net.HttpResponse {
+	return hive.net.HttpResponse(200, withContentType("application/json"), body)
+}
+
+func ok(): hive.net.HttpResponse {
+	return json(encode(Status("ok"), hive.json.codec()))
+}
+
+func noContent(): hive.net.HttpResponse {
+	return hive.net.HttpResponse(204, defaultHeaders(), "")
+}
+
+func badRequest(): hive.net.HttpResponse {
+	return text(400, "Bad request")
+}
+
+func notFound(): hive.net.HttpResponse {
+	return text(404, "Not found")
+}
+
+func methodNotAllowed(allowed: Str[]): hive.net.HttpResponse {
+	methods := join(allowed, ",")
+	return hive.net.HttpResponse(405, [
+		["Content-Type", "text/plain"],
+		["Access-Control-Allow-Headers", "*"],
+		["Access-Control-Allow-Methods", methods],
+		["Access-Control-Allow-Origin", "*"],
+		["Allow", methods]
+	], "Method not allowed")
+}
+
+func serverError(): hive.net.HttpResponse {
+	return text(500, "Internal server error")
+}
+
+// Um boardId ou columnId que não existe viola a FOREIGN KEY: o corpo é inválido.
+func fromSqlError(why: hive.sql.SqlError): hive.net.HttpResponse {
+	if indexOf(why.message, "FOREIGN KEY constraint failed") is Result.Ok(_) {
+		return badRequest()
+	}
+	return serverError()
+}

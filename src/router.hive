@@ -1,0 +1,79 @@
+import ./board
+import ./column
+import ./task
+import ./web
+
+proc handleRequest(db: hive.sql.SqlConnection, req: hive.net.HttpRequest): hive.net.HttpResponse {
+	method := req.method
+	path := withoutQuery(req.url)
+
+	if method == "OPTIONS" {
+		return web.noContent()
+	}
+
+	if path is "/api/v1/board" {
+		if method == "GET" {
+			return board.getAll(db)
+		}
+		if method == "POST" {
+			return board.create(db, req.body)
+		}
+		return web.methodNotAllowed(["GET", "POST"])
+	}
+	if path is "/api/v1/board/{boardId}" {
+		if method == "PUT" {
+			return board.update(db, req.body, boardId)
+		}
+		if method == "DELETE" {
+			return board.delete(db, boardId)
+		}
+		return web.methodNotAllowed(["PUT", "DELETE"])
+	}
+
+	if path is "/api/v1/column/from/{boardId}" {
+		if method == "GET" {
+			return column.getByBoardId(db, boardId)
+		}
+		return web.methodNotAllowed(["GET"])
+	}
+	if path is "/api/v1/column" && method == "POST" {
+		return column.create(db, req.body)
+	}
+	if path is "/api/v1/column/{columnId}" {
+		if method == "PUT" {
+			return column.update(db, req.body, columnId)
+		}
+		if method == "DELETE" {
+			return column.delete(db, columnId)
+		}
+		return web.methodNotAllowed(["PUT", "DELETE"])
+	}
+
+	if path is "/api/v1/task/from/{columnId}" {
+		if method == "GET" {
+			return task.getByColumnId(db, columnId)
+		}
+		return web.methodNotAllowed(["GET"])
+	}
+	if path is "/api/v1/task" && method == "POST" {
+		return task.create(db, req.body)
+	}
+	if path is "/api/v1/task/{taskId}" {
+		if method == "PUT" {
+			return task.update(db, req.body, taskId)
+		}
+		if method == "DELETE" {
+			return task.delete(db, taskId)
+		}
+		return web.methodNotAllowed(["PUT", "DELETE"])
+	}
+
+	return web.notFound()
+}
+
+func withoutQuery(url: Str): Str {
+	if url is "{path}?{query}" {
+		return path
+	}
+	return url
+}
