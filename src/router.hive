@@ -4,71 +4,32 @@ import ./task
 import ./web
 
 proc handleRequest(db: hive.sql.SqlConnection, req: hive.net.HttpRequest): hive.net.HttpResponse {
-	method := req.method
-	path := withoutQuery(req.url)
+	switch withoutQuery(req.url), req.method {
+		_, "OPTIONS"                           { return web.noContent() }
 
-	if method == "OPTIONS" {
-		return web.noContent()
-	}
+		"/api/v1/board", "GET"                 { return board.getAll(db) }
+		"/api/v1/board", "POST"                { return board.create(db, req.body) }
+		"/api/v1/board", _                     { return web.methodNotAllowed(["GET", "POST"]) }
+		"/api/v1/board/{boardId}", "PUT"       { return board.update(db, req.body, boardId) }
+		"/api/v1/board/{boardId}", "DELETE"    { return board.delete(db, boardId) }
+		"/api/v1/board/{boardId}", _           { return web.methodNotAllowed(["PUT", "DELETE"]) }
 
-	if path is "/api/v1/board" {
-		if method == "GET" {
-			return board.getAll(db)
-		}
-		if method == "POST" {
-			return board.create(db, req.body)
-		}
-		return web.methodNotAllowed(["GET", "POST"])
-	}
-	if path is "/api/v1/board/{boardId}" {
-		if method == "PUT" {
-			return board.update(db, req.body, boardId)
-		}
-		if method == "DELETE" {
-			return board.delete(db, boardId)
-		}
-		return web.methodNotAllowed(["PUT", "DELETE"])
-	}
+		"/api/v1/column/from/{boardId}", "GET" { return column.getByBoardId(db, boardId) }
+		"/api/v1/column/from/{boardId}", _     { return web.methodNotAllowed(["GET"]) }
+		"/api/v1/column", "POST"               { return column.create(db, req.body) }
+		"/api/v1/column/{columnId}", "PUT"     { return column.update(db, req.body, columnId) }
+		"/api/v1/column/{columnId}", "DELETE"  { return column.delete(db, columnId) }
+		"/api/v1/column/{columnId}", _         { return web.methodNotAllowed(["PUT", "DELETE"]) }
 
-	if path is "/api/v1/column/from/{boardId}" {
-		if method == "GET" {
-			return column.getByBoardId(db, boardId)
-		}
-		return web.methodNotAllowed(["GET"])
-	}
-	if path is "/api/v1/column" && method == "POST" {
-		return column.create(db, req.body)
-	}
-	if path is "/api/v1/column/{columnId}" {
-		if method == "PUT" {
-			return column.update(db, req.body, columnId)
-		}
-		if method == "DELETE" {
-			return column.delete(db, columnId)
-		}
-		return web.methodNotAllowed(["PUT", "DELETE"])
-	}
+		"/api/v1/task/from/{columnId}", "GET"  { return task.getByColumnId(db, columnId) }
+		"/api/v1/task/from/{columnId}", _      { return web.methodNotAllowed(["GET"]) }
+		"/api/v1/task", "POST"                 { return task.create(db, req.body) }
+		"/api/v1/task/{taskId}", "PUT"         { return task.update(db, req.body, taskId) }
+		"/api/v1/task/{taskId}", "DELETE"      { return task.delete(db, taskId) }
+		"/api/v1/task/{taskId}", _             { return web.methodNotAllowed(["PUT", "DELETE"]) }
 
-	if path is "/api/v1/task/from/{columnId}" {
-		if method == "GET" {
-			return task.getByColumnId(db, columnId)
-		}
-		return web.methodNotAllowed(["GET"])
+		_, _                                   { return web.notFound() }
 	}
-	if path is "/api/v1/task" && method == "POST" {
-		return task.create(db, req.body)
-	}
-	if path is "/api/v1/task/{taskId}" {
-		if method == "PUT" {
-			return task.update(db, req.body, taskId)
-		}
-		if method == "DELETE" {
-			return task.delete(db, taskId)
-		}
-		return web.methodNotAllowed(["PUT", "DELETE"])
-	}
-
-	return web.notFound()
 }
 
 func withoutQuery(url: Str): Str {
