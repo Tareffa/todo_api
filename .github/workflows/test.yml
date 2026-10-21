@@ -18,7 +18,7 @@ jobs:
       - name: Install hivec
         run: |
           mkdir -p "$HOME/.local/bin"
-          curl -fsSL "https://github.com/R0DR160HM/hive-lang/releases/download/v0.2.15/hivec-linux-amd64" -o "$HOME/.local/bin/hivec"
+          curl -fsSL "https://github.com/R0DR160HM/hive-lang/releases/download/v0.2.16/hivec-linux-amd64" -o "$HOME/.local/bin/hivec"
           chmod +x "$HOME/.local/bin/hivec"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: hivec check todo_api.hive

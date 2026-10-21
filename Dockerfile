@@ -1,5 +1,5 @@
 ARG GO_VERSION=1.27.1
-ARG HIVEC_VERSION=v0.2.15
+ARG HIVEC_VERSION=v0.2.16
 
 # Estágio de build: Go e o compilador Hive (hivec)
 FROM debian:bookworm-slim AS build

@@ -33,11 +33,11 @@ Após a conexão ser reestabelecida, os dados devem ser sincronizados
 > ### Opção 2: Compilar e Rodar Localmente
 >
 > **Pré-requisitos:**
-> - Hive (`hivec`) v0.2.15
+> - Hive (`hivec`) v0.2.16
 > - Go 1.24 ou superior
 >
 > **Instalação do Hive:**
-> - Baixe o `hivec` da sua plataforma na [página da release v0.2.15](https://github.com/R0DR160HM/hive-lang/releases/tag/v0.2.15) e coloque-o no `PATH`
+> - Baixe o `hivec` da sua plataforma na [página da release v0.2.16](https://github.com/R0DR160HM/hive-lang/releases/tag/v0.2.16) e coloque-o no `PATH`
 > - Instale o Go a partir de [go.dev/dl](https://go.dev/dl/)
 >
 > **Rodar o projeto:**
